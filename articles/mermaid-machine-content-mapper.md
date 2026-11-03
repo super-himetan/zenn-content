@@ -6,7 +6,13 @@ topics: ["typescript", "mermaid", "react", "statemachine"]
 published: false
 ---
 
+:::message
+釣りタイトルです！Content Mapperを使って全く役に立たないものを作ってしまっています！
+役立つContent Mapperの使い方は TSKaigi Sendai 2026のuhyoさんの「[Content Mapper APIの応用例〜CSS Modules、言語ファイル〜](https://speakerdeck.com/uhyo/content-mapper-api-no-ouyou-rei-css-modules-gengo-fairu) が分かりやすいです
+:::
+
 Mermaid の状態遷移図を `.mmd` のまま import して、TypeScript の型として扱えるようにしてみました。図から矢印を1本消すと、その矢印を使っていたコードが型エラーになります。
+
 
 ![図から矢印を消すと App.tsx が型エラーになる様子](/images/mermaid-machine/remove-edge.gif)
 
@@ -20,22 +26,8 @@ Mermaid の状態遷移図を `.mmd` のまま import して、TypeScript の型
 
 `.ts` ではないファイルを、仮想的な TypeScript に変換するプラグインの仕組みです。拡張子ごとに `tsconfig.json` に登録します。変換後のコードと元のファイルの位置の対応も一緒に渡すので、エラーやエディタの機能が元のファイルの上で動きます。詳しくは[公式の発表記事](https://devblogs.microsoft.com/typescript/announcing-typescript-7-1-beta/)にあります。
 
-```json:tsconfig.json
-{
-  "contentMappers": [{ "package": "mermaid-machine", "extensions": [".mmd"] }]
-}
-```
 
-mapper は外部のプログラムとして動くので、`tsc` では `--runExternalCode` で実行を許可します。
 
-```bash
-tsc --noEmit --runExternalCode
-```
-
-TSKaigi Sendai 2026 には、うひょさんの「[Content Mapper APIの応用例〜CSS Modules、言語ファイル〜](https://sendai.tskaigi.org/talks/5)」というセッションがありました。私はスライドだけ拝見しました。
-
-<!-- TODO: スライドを見て何を思ったか、なぜ Mermaid を試そうと思ったかを自分の言葉で書く -->
-<!-- TODO: スライドの URL が分かれば追加する -->
 
 ## 図は有向グラフとして読める
 
@@ -175,20 +167,10 @@ else writeFixed(event, eventSpan);
 - Content Mapper は `tsc` とエディタのための仕組みなので、実行時に `.mmd` を読むには別の手段が必要です。今回は同じコンパイラを使う Vite プラグインを作りました。
 - ハンドラの消し忘れや、ボタンの作り忘れは型では検出できません。そこはテストで確認しています。
 
-## 手元で試す
 
-```bash
-git clone https://github.com/super-himetan/mermaid-machine.git
-cd mermaid-machine
-pnpm install
-pnpm check
-pnpm dev
-```
-
-VS Code では拡張機能 `TypeScriptTeam.native-preview` を入れて、このフォルダを開きます。
 
 ## まとめ
 
 図を有向グラフとして型にすると、遷移の制限だけでなく、経路のルールまでコンパイル時に検査できました。
-
-<!-- TODO: 他に何に使えそうか、試してみた感想を自分の言葉で書く -->
+正直実務で生かそうとするとデータが増えてグラフは複雑になりそうなので、私はコードで読めれば十分だなと思いました。
+気が向いたらちゃんと使いものになるContent Mapperの使い方も書こうと思います。
