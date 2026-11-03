@@ -2,7 +2,7 @@
 title: "人間がレビューしやすい型安全な状態フローの生成"
 emoji: "☕️"
 type: "tech"
-topics: ["typescript", "mermaid", "react", "statemachine"]
+topics: ["typescript", "Mermaid", "react", "statemachine"]
 published: false
 ---
 
@@ -11,17 +11,22 @@ published: false
 役立つContent Mapperの使い方は TSKaigi Sendai 2026のuhyoさんの「[Content Mapper APIの応用例〜CSS Modules、言語ファイル〜](https://speakerdeck.com/uhyo/content-mapper-api-no-ouyou-rei-css-modules-gengo-fairu) が分かりやすいです。
 :::
 
-Mermaid の状態遷移図を、TypeScript の型として扱えるようにしてみました。mermaidの図から矢印を1本消すと、その矢印を使っていたコードは型エラーになります。
+Mermaid の状態遷移図を、TypeScript の型として扱えるようにしてみました。Mermaidの図から矢印を1本消すと、その矢印を使っていたコードは型エラーになります。
 
-![図から矢印を消すと App.tsx が型エラーになる様子](/images/mermaid-machine/remove-edge.gif)
+![図から矢印を消すと App.tsx が型エラーになる様子](/images/Mermaid-machine/remove-edge.gif)
 
 使っているのは、TypeScript 7.1 Beta で導入された [Content Mapper](https://devblogs.microsoft.com/typescript/announcing-typescript-7-1-beta/) です。`.ts` ではないファイルを仮想的な TypeScript に変換する仕組みで、エラーやエディタの機能が元のファイルの上で動きます。
 
-## mermaid図をそのまま型として扱う
+:::message
+執筆時点の TypeScript は `7.1.0-beta` です。API や設定は正式版までに変わる可能性があります。
+:::
+
+
+## Mermaid図を有向グラフと見立てて型に変換する
 
 コーヒーマシンの状態遷移図を `coffee.mmd` として用意します。
 
-```mermaid
+```Mermaid
 stateDiagram-v2
   %% field drink: "コーヒー" | "カフェラテ" | "抹茶ラテ"
 
@@ -64,7 +69,8 @@ export interface Payloads {
 }
 ```
 
-Content Mapperを使うことで`import type { Graph } from "./coffee.mmd"` と書けば、この型を使うことができます。グラフを型に変換することで3つのことができるようになります。
+Content Mapperを使うことで`import type { Graph } from "./coffee.mmd"` とMermaidをimportするように書けば、この型を使うことができます。
+そうすることで3つのことができるようになります。
 
 ## 図にない遷移を書けなくする
 
@@ -83,7 +89,7 @@ Property 'backToMenu' does not exist on type 'Flow<"PlacingCup">'.
 
 たとえばReactを使う場合、今の状態から送れるイベントだけをイベントハンドラーとして補完に出るようにもできます。
 
-![状態ごとに send の補完が変わる様子](/images/mermaid-machine/completion.gif)
+![状態ごとに send の補完が変わる様子](/images/Mermaid-machine/completion.gif)
 
 ## 引数も図の型で制御する
 
@@ -102,14 +108,14 @@ Type '"抹茶"' is not assignable to type '"カフェラテ" | "コーヒー" | 
 
 メニューを変えるときも、直すのは図だけです。図に `"抹茶"` を足せば上のコードは通るようになり、`"抹茶ラテ"` を消せば、それを渡していたコードがエラーになります。
 
-![図の型を直すとコードの赤線が消える様子](/images/mermaid-machine/argument-type.gif)
+![図の型を直すとコードの赤線が消える様子](/images/Mermaid-machine/argument-type.gif)
 
 
-## mermaid図の中に赤線を出す
+## Mermaid図の中に赤線を出す
 
 mapper は、図の間違いを位置付きで報告できます。エディタでは `.mmd` の上に赤線が出ます。
 
-![.mmd の中に mapper のエラーが表示される様子](/images/mermaid-machine/diagram-error.gif)
+![.mmd の中に mapper のエラーが表示される様子](/images/Mermaid-machine/diagram-error.gif)
 
 この GIF では、状態が持つデータの名前を `drnk` と間違えています。Mermaid にとってはただの説明文なので、プレビューは正常に描画されたままです。図としては正しくても、型の世界では間違いとして扱えます。
 
@@ -148,7 +154,7 @@ menu.chooseDrink({ drink: "コーヒー" }).backToMenu();
 import { MappedCodeBuilder, runContentMapper } from "ts-content-mapper";
 
 runContentMapper({
-  diagnosticSource: "mermaid",
+  diagnosticSource: "Mermaid",
   transform({ content }, { positionEncoding }) {
     // 矢印とフィールドを読み取る
     const edges = [...content.matchAll(/^\s*(\w+) --> (\w+): (\w+)(?:\((\w+)\))?$/dgm)];
@@ -296,14 +302,11 @@ console.log(Object.keys(cup)); // ["backToMenu", "pressStart"]
 
 :::
 
-React で動くデモは [super-himetan/mermaid-machine](https://github.com/super-himetan/mermaid-machine) に置いています。
+動くデモは [super-himetan/Mermaid-machine](https://github.com/super-himetan/Mermaid-machine) に置いています。
 
-:::message
-執筆時点の TypeScript は `7.1.0-beta` です。API や設定は正式版までに変わる可能性があります。
-:::
 
 ## まとめ
 
 図を有向グラフとして型にすると、遷移の順番だけでなく、イベントの引数まで図に書いた型で検査できました。
 正直実務で生かそうとするとデータが増えてグラフは複雑になりそうなので、私はコードで読めれば十分だなと思いました。
-気が向いたらちゃんと使いものになるContent Mapperの使い方も書こうと思います。
+気が向いたらちゃんと使いものになるContent Mapperの応用も書こうと思います。
