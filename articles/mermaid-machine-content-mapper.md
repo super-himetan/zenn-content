@@ -2,7 +2,7 @@
 title: "人間がレビューしやすい型安全な状態フローの生成"
 emoji: "☕️"
 type: "tech"
-topics: ["typescript", "Mermaid", "react", "statemachine"]
+topics: ["typescript", "mermaid", "react", "statemachine"]
 published: false
 ---
 
@@ -13,7 +13,7 @@ published: false
 
 Mermaid の状態遷移図を、TypeScript の型として扱えるようにしてみました。Mermaidの図から矢印を1本消すと、その矢印を使っていたコードは型エラーになります。
 
-![図から矢印を消すと App.tsx が型エラーになる様子](/images/Mermaid-machine/remove-edge.gif)
+![図から矢印を消すと App.tsx が型エラーになる様子](/images/mermaid-machine/remove-edge.gif)
 
 使っているのは、TypeScript 7.1 Beta で導入された [Content Mapper](https://devblogs.microsoft.com/typescript/announcing-typescript-7-1-beta/) です。`.ts` ではないファイルを仮想的な TypeScript に変換する仕組みで、エラーやエディタの機能が元のファイルの上で動きます。
 
@@ -26,7 +26,7 @@ Mermaid の状態遷移図を、TypeScript の型として扱えるようにし�
 
 コーヒーマシンの状態遷移図を `coffee.mmd` として用意します。
 
-```Mermaid
+```mermaid
 stateDiagram-v2
   %% field drink: "コーヒー" | "カフェラテ" | "抹茶ラテ"
 
@@ -89,7 +89,7 @@ Property 'backToMenu' does not exist on type 'Flow<"PlacingCup">'.
 
 たとえばReactを使う場合、今の状態から送れるイベントだけをイベントハンドラーとして補完に出るようにもできます。
 
-![状態ごとに send の補完が変わる様子](/images/Mermaid-machine/completion.gif)
+![状態ごとに send の補完が変わる様子](/images/mermaid-machine/completion.gif)
 
 ## 引数も図の型で制御する
 
@@ -108,14 +108,14 @@ Type '"抹茶"' is not assignable to type '"カフェラテ" | "コーヒー" | 
 
 メニューを変えるときも、直すのは図だけです。図に `"抹茶"` を足せば上のコードは通るようになり、`"抹茶ラテ"` を消せば、それを渡していたコードがエラーになります。
 
-![図の型を直すとコードの赤線が消える様子](/images/Mermaid-machine/argument-type.gif)
+![図の型を直すとコードの赤線が消える様子](/images/mermaid-machine/argument-type.gif)
 
 
 ## Mermaid図の中に赤線を出す
 
 mapper は、図の間違いを位置付きで報告できます。エディタでは `.mmd` の上に赤線が出ます。
 
-![.mmd の中に mapper のエラーが表示される様子](/images/Mermaid-machine/diagram-error.gif)
+![.mmd の中に mapper のエラーが表示される様子](/images/mermaid-machine/diagram-error.gif)
 
 この GIF では、状態が持つデータの名前を `drnk` と間違えています。Mermaid にとってはただの説明文なので、プレビューは正常に描画されたままです。図としては正しくても、型の世界では間違いとして扱えます。
 
@@ -154,7 +154,7 @@ menu.chooseDrink({ drink: "コーヒー" }).backToMenu();
 import { MappedCodeBuilder, runContentMapper } from "ts-content-mapper";
 
 runContentMapper({
-  diagnosticSource: "Mermaid",
+  diagnosticSource: "mermaid",
   transform({ content }, { positionEncoding }) {
     // 矢印とフィールドを読み取る
     const edges = [...content.matchAll(/^\s*(\w+) --> (\w+): (\w+)(?:\((\w+)\))?$/dgm)];
@@ -302,7 +302,7 @@ console.log(Object.keys(cup)); // ["backToMenu", "pressStart"]
 
 :::
 
-動くデモは [super-himetan/Mermaid-machine](https://github.com/super-himetan/Mermaid-machine) に置いています。
+動くデモは [super-himetan/mermaid-machine](https://github.com/super-himetan/mermaid-machine) に置いています。
 
 
 ## まとめ
