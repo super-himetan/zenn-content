@@ -1,5 +1,5 @@
 ---
-title: "人間がレビューしやすい型安全な状態フローの生成"
+title: "人間がレビューしやすい型安全な状態フローの生成【Content Mapperで遊ぼう】"
 emoji: "☕️"
 type: "tech"
 topics: ["typescript", "mermaid", "react", "statemachine"]
