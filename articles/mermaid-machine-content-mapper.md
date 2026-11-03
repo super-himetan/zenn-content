@@ -111,7 +111,7 @@ Type '"抹茶"' is not assignable to type '"カフェラテ" | "コーヒー" | 
 ![図の型を直すとコードの赤線が消える様子](/images/mermaid-machine/argument-type.gif)
 
 
-## Mermaid図の中に赤線を出す
+## Mermaid記法の中に赤線を出す
 
 mapper は、図の間違いを位置付きで報告できます。エディタでは `.mmd` の上に赤線が出ます。
 
