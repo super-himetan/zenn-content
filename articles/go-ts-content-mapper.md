@@ -37,7 +37,7 @@ const quote = Price(order); // 型は Go の宣言から、実行はブラウザ
 
 ```text
 checkout.go ─┬ tsc / エディタ → Content Mapper → 型
-             ├ Vite プラグイン → GOOS=js GOARCH=wasm go build → Wasm
+             ├ Vite プラグイン → TinyGo → Wasm
              └ server/main.go → 普通の import
 ```
 
@@ -162,9 +162,26 @@ if quote.Total != req.ExpectedTotal {
 
 ソースは1つですが、ビルドはネイティブと Wasm で別です。そこで同じテストケースの JSON を Go のテストと Wasm のテストの両方で読み、同じ結果になることを確かめています。
 
+## TinyGo で Wasm を小さくする
+
+Go の Wasm はランタイムごと入るので、そのままだとかなり大きくなります。そこで本番のビルドには [TinyGo](https://tinygo.org/) を使い、さらに Brotli で圧縮して配信しています。
+
+| コンパイラ | 無圧縮 | gzip | Brotli |
+| --- | --- | --- | --- |
+| 標準の Go | 4.53MB | 1.25MB | 915KB |
+| TinyGo（`-opt=z`） | 1.05MB | 383KB | **278KB** |
+
+Brotli での比較で約70%減りました。ただし、そのまま置き換えられたわけではありません。
+
+- **`reflect` で関数を呼べない**: 最初は `reflect` で Go の関数を呼んでいましたが、TinyGo では `panic: unimplemented: (reflect.Type).NumIn()` になりました。そこで、関数の形ごとの包み関数を生成する形に変えています（実装の節を参照）。
+- **ビルドが遅い**: 手元の環境では再ビルドに約13秒かかりました。そこで `pnpm dev` は標準の Go、`pnpm build` は TinyGo と使い分けています。
+- **待つ処理の動きが違う**: `time.Sleep` を含む関数を JavaScript から同期で呼ぶと、標準の Go では値が返りますが、TinyGo では `undefined` が返りました。このままだと気づきにくいので、例外にしています。
+
+開発中と本番でコンパイラが変わるので、Wasm のテストは両方のコンパイラで実行し、ブラウザのテストは TinyGo のビルドで動かしています。
+
 ## 実装
 
-全体でも mapper が73行、Vite プラグインが106行です。Go ファイルの解析だけは、Go の標準パッケージ `go/parser` を使う小さなツールにしています（テストを除いて約600行）。
+全体でも mapper が73行、Vite プラグインが166行です。Go ファイルの解析だけは、Go の標準パッケージ `go/parser` を使う小さなツールにしています（テストを除いて約600行）。
 
 :::details Content Mapper 本体
 
@@ -220,39 +237,46 @@ Vite プラグインは、パッケージの公開関数を並べた `main.go` �
 
 ```go
 func main() {
-	bridge.Serve("__go_mapper_checkout_...", map[string]any{
-		"Menu":     pkg.Menu,
-		"Validate": pkg.Validate,
-		"Price":    pkg.Price,
+	bridge.Serve("__go_mapper_checkout_...", map[string]bridge.Func{
+		"Menu":     wrap0R(pkg.Menu),
+		"Validate": wrap1R(pkg.Validate),
+		"Price":    wrap1RE(pkg.Price),
 		// ...
 	})
 }
 ```
 
-受け取った関数は `reflect` で呼びます。引数と戻り値はどちらも JSON です。これで型ごとのラッパーを生成せずに済みます。
+`wrap1RE` は「引数が1つで、値と error を返す」関数を包むために生成した関数です。ジェネリクスにしておくと型は Go が推論してくれるので、生成するコードに `Order` のような型名を書かずに済みます。引数と戻り値はどちらも JSON です。
+
+```go
+func wrap1RE[A0, R any](f func(A0) (R, error)) bridge.Func {
+	return func(args []string) (string, error) {
+		if err := bridge.CheckArgs(args, 1); err != nil {
+			return "", err
+		}
+		a0, err := bridge.Arg[A0](args, 0)
+		if err != nil {
+			return "", err
+		}
+		r, err := f(a0)
+		if err != nil {
+			return "", err
+		}
+		return bridge.Encode(r)
+	}
+}
+```
+
+呼び出しの入口では panic を受け止めています。
 
 ```go:bridge/bridge.go（抜粋）
-func Invoke(fn any, args []string) (result string, err error) {
+func Invoke(fn Func, args []string) (result string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic: %v", r)
 		}
 	}()
-
-	v := reflect.ValueOf(fn)
-	t := v.Type()
-	if len(args) != t.NumIn() {
-		return "", fmt.Errorf("expected %d argument(s), got %d", t.NumIn(), len(args))
-	}
-	in := make([]reflect.Value, len(args))
-	for i, arg := range args {
-		p := reflect.New(t.In(i))
-		if err := json.Unmarshal([]byte(arg), p.Interface()); err != nil {
-			return "", fmt.Errorf("argument %d: %w", i, err)
-		}
-		in[i] = p.Elem()
-	}
-	// 呼び出して、error を分けて、残りを JSON にして返す
+	return fn(args)
 }
 ```
 
@@ -274,7 +298,7 @@ Wasm の読み込みはパッケージごとに1回だけです。同じパッ�
 
 良いことばかりではないので、試して分かった制限も書いておきます。
 
-- **Wasm が大きい**: 通常の Go で作るとランタイムごと入るので、このデモで約 4.5MB あります。読み込むまで動かないので、読み込み中の表示も必要です。
+- **Wasm はそれでも小さくはない**: TinyGo と Brotli を使っても、このデモで約 278KB あります。読み込むまで動かないので、読み込み中の表示も必要です。
 - **解析はファイル単位**: Content Mapper は1ファイルずつ変換するので、TypeScript に公開する型は同じファイルに置く必要があります。別のファイルに書かれた `MarshalJSON` も検出できません。
 - **数値は `number` にまとまる**: `int` の引数に `1.5` を渡してもコンパイルは通り、実行時に例外になります。
 - **union は閉じた型ではない**: Go では `Size("XL")` も `""` も作れますが、型は定数の一覧です。バックエンドから来た値を信用するための型ではありません。
