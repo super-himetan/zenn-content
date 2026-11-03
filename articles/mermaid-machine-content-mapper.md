@@ -11,8 +11,10 @@ published: true
 役立つContent Mapperの使い方は TSKaigi Sendai 2026の @uhyo_さんの「[Content Mapper APIの応用例〜CSS Modules、言語ファイル〜](https://speakerdeck.com/uhyo/content-mapper-api-no-ouyou-rei-css-modules-gengo-fairu)」が分かりやすいです。(私もスライドを拝見してから触りました。)
 :::
 
-Mermaid の状態遷移図を、TypeScript の型として扱えるようにしてみました。Mermaidの図から矢印を1本消すと、その矢印を使っていたコードは型エラーになります。
+大AI時代、AIのouputを人間が見るの辛すぎます！
+そんなみなさんのためにMermaid の状態遷移図を、TypeScript の型として扱えるようにしてみました。
 
+Mermaidの図から矢印を1本消すと、その矢印を使っていたコードは型エラーになります。
 ![図から矢印を消すと App.tsx が型エラーになる様子](/images/mermaid-machine/remove-edge.gif)
 
 使っているのは、TypeScript 7.1 Beta で導入された [Content Mapper](https://devblogs.microsoft.com/typescript/announcing-typescript-7-1-beta/) です。`.ts` ではないファイルを仮想的な TypeScript に変換する仕組みで、エラーやエディタの機能が元のファイルの上で動きます。
