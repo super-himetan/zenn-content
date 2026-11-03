@@ -8,50 +8,38 @@ published: false
 
 :::message
 釣りタイトルです！Content Mapperを使って全く役に立たないものを作ってしまっています！
-役立つContent Mapperの使い方は TSKaigi Sendai 2026のuhyoさんの「[Content Mapper APIの応用例〜CSS Modules、言語ファイル〜](https://speakerdeck.com/uhyo/content-mapper-api-no-ouyou-rei-css-modules-gengo-fairu) が分かりやすいです
+役立つContent Mapperの使い方は TSKaigi Sendai 2026のuhyoさんの「[Content Mapper APIの応用例〜CSS Modules、言語ファイル〜](https://speakerdeck.com/uhyo/content-mapper-api-no-ouyou-rei-css-modules-gengo-fairu) が分かりやすいです。
 :::
 
-Mermaid の状態遷移図を `.mmd` のまま import して、TypeScript の型として扱えるようにしてみました。図から矢印を1本消すと、その矢印を使っていたコードが型エラーになります。
+Mermaid の状態遷移図を、TypeScript の型として扱えるようにしてみました。mermaidの図から矢印を1本消すと、その矢印を使っていたコードは型エラーになります。
 
 ![図から矢印を消すと App.tsx が型エラーになる様子](/images/mermaid-machine/remove-edge.gif)
 
-使っているのは、TypeScript 7.1 Beta で導入された Content Mapper です。この記事では、同じ仕組みを40行ほどの mapper で作りながら説明します。記事のコードだけで動きます。
+使っているのは、TypeScript 7.1 Beta で導入された [Content Mapper](https://devblogs.microsoft.com/typescript/announcing-typescript-7-1-beta/) です。`.ts` ではないファイルを仮想的な TypeScript に変換する仕組みで、エラーやエディタの機能が元のファイルの上で動きます。
 
-:::message
-執筆時点の TypeScript は `7.1.0-beta` です。API や設定は正式版までに変わる可能性があります。
-:::
+## mermaid図をそのまま型として扱う
 
-## Content Mapper とは
-
-`.ts` ではないファイルを、仮想的な TypeScript に変換するプラグインの仕組みです。変換後のコードと元のファイルの位置の対応も一緒に渡すので、エラーやエディタの機能が元のファイルの上で動きます。詳しくは[公式の発表記事](https://devblogs.microsoft.com/typescript/announcing-typescript-7-1-beta/)にあります。
-
-## 作るもの
-
-題材はコーヒーマシンの状態遷移図です。メニューを選び、カップをセットして、抽出すると提供されます。
+コーヒーマシンの状態遷移図を `coffee.mmd` として用意します。
 
 ```mermaid
 stateDiagram-v2
+  %% field drink: "コーヒー" | "カフェラテ" | "抹茶ラテ"
+
   [*] --> Menu
-  Menu --> PlacingCup: chooseDrink
+  Menu --> PlacingCup: chooseDrink(drink)
   PlacingCup --> Menu: backToMenu
   PlacingCup --> Brewing: pressStart
   Brewing --> Served: brewed
   Served --> [*]
 ```
 
-ソースはこれです。
+ソースには、図に出てこない次の1行も書いています。`%%` は Mermaid のコメントなので、描画には影響しません。
 
-```text:src/coffee.mmd
-stateDiagram-v2
-  [*] --> Menu
-  Menu --> PlacingCup: chooseDrink
-  PlacingCup --> Menu: backToMenu
-  PlacingCup --> Brewing: pressStart
-  Brewing --> Served: brewed
-  Served --> [*]
+```text
+%% field drink: "コーヒー" | "カフェラテ" | "抹茶ラテ"
 ```
 
-状態遷移図は、状態を頂点、イベントを辺とする有向グラフです。そこで、この図を次の型に変換します。「どの状態から、どのイベントで、どの状態へ」がそのまま型になります。
+この状態遷移図を、状態を頂点、イベントを辺とする有向グラフと見立てています。そこで、これを次の型に変換します。
 
 ```ts
 export interface Graph {
@@ -68,11 +56,154 @@ export interface Graph {
   Served: {
   };
 }
+export interface Fields {
+  drink: "コーヒー" | "カフェラテ" | "抹茶ラテ";
+}
+export interface Payloads {
+  chooseDrink: { drink: Fields["drink"] };
+}
 ```
 
-## mapper を書く
+Content Mapperを使うことで`import type { Graph } from "./coffee.mmd"` と書けば、この型を使うことができます。グラフを型に変換することで3つのことができるようになります。
 
-mapper は npm パッケージの形で作ります。`package.json` に、実行するコマンドを書きます。
+## 図にない遷移を書けなくする
+
+今いる状態から出ている矢印だけをメソッドにすると、呼び出しの順番が図の通りに制限されます。
+
+```ts
+menu.chooseDrink({ drink: "コーヒー" }).pressStart().brewed(); // OK
+menu.pressStart(); // エラー: Menu から pressStart の矢印はない
+```
+
+図を変えれば、コードの正しさも変わります。`PlacingCup --> Menu: backToMenu` を消すと、`backToMenu` を呼んでいたコードがエラーになります。
+
+```text
+Property 'backToMenu' does not exist on type 'Flow<"PlacingCup">'.
+```
+
+たとえばReactを使う場合、今の状態から送れるイベントだけをイベントハンドラーとして補完に出るようにもできます。
+
+![状態ごとに send の補完が変わる様子](/images/mermaid-machine/completion.gif)
+
+## 引数も図の型で制御する
+
+矢印に書いた `chooseDrink(drink)` の `drink` は、イベントの引数です。型は `%% field drink` に書いたものがそのまま使われます。
+
+```ts
+menu.chooseDrink({ drink: "コーヒー" }); // OK
+menu.chooseDrink({ drink: "抹茶" }); // エラー: 図にない飲み物
+menu.chooseDrink(); // エラー: 引数が必要
+menu.chooseDrink({ drink: "コーヒー" }).pressStart({ drink: "コーヒー" }); // エラー: pressStart に引数はない
+```
+
+```text
+Type '"抹茶"' is not assignable to type '"カフェラテ" | "コーヒー" | "抹茶ラテ"'.
+```
+
+メニューを変えるときも、直すのは図だけです。図に `"抹茶"` を足せば上のコードは通るようになり、`"抹茶ラテ"` を消せば、それを渡していたコードがエラーになります。
+
+![図の型を直すとコードの赤線が消える様子](/images/mermaid-machine/argument-type.gif)
+
+
+## mermaid図の中に赤線を出す
+
+mapper は、図の間違いを位置付きで報告できます。エディタでは `.mmd` の上に赤線が出ます。
+
+![.mmd の中に mapper のエラーが表示される様子](/images/mermaid-machine/diagram-error.gif)
+
+この GIF では、状態が持つデータの名前を `drnk` と間違えています。Mermaid にとってはただの説明文なので、プレビューは正常に描画されたままです。図としては正しくても、型の世界では間違いとして扱えます。
+
+リネームも図まで届きます。コードの `backToMenu` をリネームすると、`.mmd` の中の名前まで書き換わります。
+
+## 実装
+
+型の定義と mapper の全体です。mapper は58行で、図を読んで型の文字列を組み立てているだけです。興味があれば覗いてみてください。
+
+:::details 図にない遷移を書けなくする型
+
+```ts:src/flow.ts
+import type { Graph, Payloads } from "./coffee.mmd";
+
+// 今いる状態から出ている矢印だけが、メソッドになる
+// 図に引数が書いてあるイベントは、その引数を必須にする
+export type Flow<S extends keyof Graph> = {
+  [Event in keyof Graph[S]]: (
+    ...args: Event extends keyof Payloads ? [Payloads[Event]] : []
+  ) => Flow<Graph[S][Event] & keyof Graph>;
+};
+
+declare const menu: Flow<"Menu">;
+
+menu.chooseDrink({ drink: "コーヒー" }).pressStart().brewed();
+menu.chooseDrink({ drink: "コーヒー" }).backToMenu();
+```
+
+:::
+
+:::details mapper 本体と設定
+
+[ts-content-mapper](https://github.com/sxzz/ts-content-mapper) という SDK を使っています。`appendVerbatim` は `.mmd` の範囲をそのまま写す命令で、元の位置との対応が残るので、リネームが図まで届きます。
+
+```js:mmd-mapper/server.mjs
+import { MappedCodeBuilder, runContentMapper } from "ts-content-mapper";
+
+runContentMapper({
+  diagnosticSource: "mermaid",
+  transform({ content }, { positionEncoding }) {
+    // 矢印とフィールドを読み取る
+    const edges = [...content.matchAll(/^\s*(\w+) --> (\w+): (\w+)(?:\((\w+)\))?$/dgm)];
+    const fields = [...content.matchAll(/^\s*%% field (\w+): (.+)$/dgm)];
+    const hasField = (name) => fields.some(([, field]) => field === name);
+    const states = new Set(edges.flatMap(([, from, to]) => [from, to]));
+
+    const b = new MappedCodeBuilder(content, { positionEncoding });
+
+    // 状態ごとの矢印
+    b.append("export interface Graph {\n");
+    for (const state of states) {
+      b.append(`  ${state}: {\n`);
+      for (const edge of edges.filter(([, from]) => from === state)) {
+        const [start, end] = edge.indices[3]; // イベント名の位置
+        b.append("    ");
+        b.appendVerbatim(start, end);
+        b.append(`: "${edge[2]}";\n`);
+      }
+      b.append("  };\n");
+    }
+    b.append("}\n");
+    b.append("export declare const graph: Graph;\n");
+
+    // フィールドの型は図の文字列をそのまま写す
+    b.append("export interface Fields {\n");
+    for (const field of fields) {
+      const [start, end] = field.indices[2];
+      b.append(`  ${field[1]}: `);
+      b.appendVerbatim(start, end);
+      b.append(";\n");
+    }
+    b.append("}\n");
+
+    // イベントの引数
+    b.append("export interface Payloads {\n");
+    for (const [, , , event, field] of edges) {
+      if (hasField(field)) b.append(`  ${event}: { ${field}: Fields["${field}"] };\n`);
+    }
+    b.append("}\n");
+
+    // 図の間違いは、位置を付けて報告できる
+    const diagnostics = edges
+      .filter((edge) => edge[4] && !hasField(edge[4]))
+      .map((edge) => ({
+        code: 1,
+        messageText: `'${edge[4]}' has no '%% field ${edge[4]}: ...' line.`,
+        start: edge.indices[4][0],
+        length: edge[4].length,
+      }));
+
+    return { ...b.build(".ts"), diagnostics };
+  },
+});
+```
 
 ```json:mmd-mapper/package.json
 {
@@ -89,51 +220,6 @@ mapper は npm パッケージの形で作ります。`package.json` に、実�
 }
 ```
 
-本体です。[ts-content-mapper](https://github.com/sxzz/ts-content-mapper) という SDK を使うと、図を読んで TypeScript の文字列を組み立てるだけで済みます。
-
-```js:mmd-mapper/server.mjs
-import { MappedCodeBuilder, runContentMapper } from "ts-content-mapper";
-
-runContentMapper({
-  diagnosticSource: "mermaid",
-  transform({ content }, { positionEncoding }) {
-    // 矢印を読み取って、状態ごとにまとめる
-    const edges = [...content.matchAll(/^\s*(\w+) --> (\w+): (\w+)$/dgm)];
-    const states = new Set(edges.flatMap(([, from, to]) => [from, to]));
-
-    const b = new MappedCodeBuilder(content, { positionEncoding });
-    b.append("export interface Graph {\n");
-    for (const state of states) {
-      b.append(`  ${state}: {\n`);
-      for (const edge of edges.filter(([, from]) => from === state)) {
-        const [start, end] = edge.indices[3]; // イベント名の位置
-        b.append("    ");
-        b.appendVerbatim(start, end);
-        b.append(`: "${edge[2]}";\n`);
-      }
-      b.append("  };\n");
-    }
-    b.append("}\n");
-
-    // 図の間違いは、位置を付けて報告できる
-    const diagnostics = edges
-      .filter(([, , to]) => !edges.some(([, from]) => from === to) && !content.includes(`${to} --> [*]`))
-      .map((edge) => ({
-        code: 1,
-        messageText: `State '${edge[2]}' has no way out.`,
-        start: edge.indices[2][0],
-        length: edge[2].length,
-      }));
-
-    return { ...b.build(".ts"), diagnostics };
-  },
-});
-```
-
-`append` はただの文字列の追加で、`appendVerbatim` は「`.mmd` のこの範囲をそのまま写す」という命令です。後者で書いた部分は、元の位置との対応が残ります。これが後で効いてきます。
-
-あとは `tsconfig.json` に登録します。`mmd-mapper` は `node_modules` から見つかるように、`"mmd-mapper": "link:./mmd-mapper"` などで依存に入れておきます。
-
 ```json:tsconfig.json
 {
   "compilerOptions": { "module": "esnext", "moduleResolution": "bundler", "strict": true, "noEmit": true, "types": [] },
@@ -142,112 +228,82 @@ runContentMapper({
 }
 ```
 
-mapper は外部のプログラムとして動くので、`tsc` では `--runExternalCode` で実行を許可します。
+mapper は外部のプログラムとして動くので、`tsc` では実行の許可が必要です。
 
 ```bash
 tsc --runExternalCode
 ```
 
-これで `.mmd` から型を import できるようになりました。
+:::
 
-## 図にない遷移を書けなくする
+:::details 実行時に動かす Vite プラグイン
 
-`Graph` を使って、今いる状態から出ている矢印だけをメソッドにする型を作ります。
-
-```ts:src/flow.ts
-import type { Graph } from "./coffee.mmd";
-
-// 今いる状態から出ている矢印だけが、メソッドになる
-type Flow<S extends keyof Graph> = {
-  [Event in keyof Graph[S]]: () => Flow<Graph[S][Event] & keyof Graph>;
-};
-
-declare const menu: Flow<"Menu">;
-
-menu.chooseDrink().pressStart().brewed();
-menu.chooseDrink().backToMenu();
-```
-
-`Menu` からいきなり `pressStart` は呼べません。図に矢印がないからです。
-
-ここで図から `PlacingCup --> Menu: backToMenu` を消すと、11行目がエラーになります。
+Content Mapper の変換結果は `tsc` とエディタのためのもので、実行時には使われません。そのため、実行時の `.mmd` は Vite プラグインで JavaScript に変換します。
 
 ```text
-src/flow.ts(11,20): error TS2339: Property 'backToMenu' does not exist on type 'Flow<"PlacingCup">'.
+tsc / エディタ   → Content Mapper  → 型
+Vite（実行時）   → Vite プラグイン → JavaScript
 ```
 
-## グラフの性質を型で検査する
+プラグインは、図から矢印の表を作って `graph` として export します。mapper が `export declare const graph: Graph` と宣言しているので、この値には `Graph` の型が付きます。
 
-矢印が型になっているので、型の上でグラフをたどることもできます。すると「カップをセットせずに抽出は始まらない」のようなルールを型で書けます。
+```js:mmd-mapper/vite.mjs
+// .mmd を import したら、矢印の表を JavaScript として返す
+export function mmd() {
+  return {
+    name: "mmd",
+    enforce: "pre",
+    transform(code, id) {
+      if (!id.split("?")[0].endsWith(".mmd")) return;
 
-```ts:src/rules.ts
-import type { Graph } from "./coffee.mmd";
-
-// S から矢印を1本たどって行ける状態
-type Next<S> = S extends keyof Graph ? Graph[S][keyof Graph[S]] : never;
-
-// From からたどれる状態をすべて集める。Avoid には入らない
-type Reachable<From, Avoid, Seen = never> = [Exclude<From, Seen | Avoid>] extends [never]
-  ? Seen
-  : Reachable<Next<Exclude<From, Seen | Avoid>>, Avoid, Seen | Exclude<From, Avoid>>;
-
-// Via を避けると To に行けないなら、To へはかならず Via を通る
-type MustPass<From, To, Via> = To extends Reachable<From, Via> ? false : true;
-
-type Rule<T extends true> = T;
-
-export type Rules = [
-  // カップをセットせずに抽出は始まらない
-  Rule<MustPass<"Menu", "Brewing", "PlacingCup">>,
-];
+      const graph = {};
+      for (const [, from, to, event] of code.matchAll(/^\s*(\w+) --> (\w+): (\w+)(?:\(\w+\))?$/gm)) {
+        graph[from] ??= {};
+        graph[to] ??= {};
+        graph[from][event] = to;
+      }
+      return { code: `export const graph = ${JSON.stringify(graph)};`, map: null };
+    },
+  };
+}
 ```
 
-やっていることは、型で書いた幅優先探索です。`PlacingCup` を通行止めにしてたどり、`Brewing` に着かなければ、すべての経路が `PlacingCup` を通っています。
+```js:vite.config.mjs
+import { mmd } from "./mmd-mapper/vite.mjs";
 
-ここで図に近道を足します。
-
-```text
-  Menu --> Brewing: quickStart
+export default { plugins: [mmd()] };
 ```
 
-図としては何も間違っていませんが、ルールは破れているので型エラーになります。
+`graph` を使えば、`Flow` 型の通りに動く実体を作れます。今の状態から出ている矢印を、次の状態へ進むメソッドにしています。
 
-```text
-src/rules.ts(18,8): error TS2344: Type 'false' does not satisfy the constraint 'true'.
+```ts:src/machine.ts
+import { graph, type Graph } from "./coffee.mmd";
+import type { Flow } from "./flow";
+
+export const flowAt = <S extends keyof Graph>(state: S): Flow<S> =>
+  Object.fromEntries(
+    Object.entries(graph[state]).map(([event, to]) => [event, () => flowAt(to as keyof Graph)]),
+  ) as Flow<S>;
 ```
 
-テストを実行しなくても、図を変えた時点で気づけます。
+```ts:src/main.ts
+import { flowAt } from "./machine";
 
-## 図の中にエラーを出す
+const cup = flowAt("Menu").chooseDrink({ drink: "コーヒー" });
 
-mapper が返した `diagnostics` は、`.mmd` の上のエラーになります。`Served` を `Sarved` と間違えると、次のように出ます。
-
-```text
-src/coffee.mmd(6,15): error mermaid1: State 'Sarved' has no way out.
+console.log(Object.keys(cup)); // ["backToMenu", "pressStart"]
 ```
 
-エディタでは `.mmd` に赤線が出ます。次の GIF は、後で紹介するもう少し作り込んだ版です。状態が持つデータの名前を間違えていますが、Mermaid にとってはただの説明文なので、プレビューは正常に描画されたままです。
+:::
 
-![.mmd の中に mapper のエラーが表示される様子](/images/mermaid-machine/diagram-error.gif)
+React で動くデモは [super-himetan/mermaid-machine](https://github.com/super-himetan/mermaid-machine) に置いています。
 
-## リネームが図まで届く
-
-Content Mapper で一番面白かったのは、生成するコードの書き方で、エディタの動きが変わるところです。
-
-イベント名は `appendVerbatim` で写したので、`.mmd` と対応が付いています。そのため `flow.ts` の `backToMenu` をリネームすると、`.mmd` の中の名前まで書き換わります。
-
-ただ、これが安全なのは1か所にしか書かれていない名前だけです。同じイベントを複数の矢印で使う図や、状態名まで同じようにすると、1か所だけ書き換わって図が壊れます。
-
-## もう少し作り込むと
-
-ここまでは型だけで、実際には動きません。Content Mapper は `tsc` とエディタのための仕組みなので、実行時に `.mmd` を読むには別の手段が必要です。
-
-[super-himetan/mermaid-machine](https://github.com/super-himetan/mermaid-machine) では、Vite プラグインを足して実際に動かしています。React では、今の状態から送れるイベントだけが `send` に生えるようにしました。
-
-![状態ごとに send の補完が変わる様子](/images/mermaid-machine/completion.gif)
+:::message
+執筆時点の TypeScript は `7.1.0-beta` です。API や設定は正式版までに変わる可能性があります。
+:::
 
 ## まとめ
 
-図を有向グラフとして型にすると、遷移の制限だけでなく、経路のルールまでコンパイル時に検査できました。
+図を有向グラフとして型にすると、遷移の順番だけでなく、イベントの引数まで図に書いた型で検査できました。
 正直実務で生かそうとするとデータが増えてグラフは複雑になりそうなので、私はコードで読めれば十分だなと思いました。
 気が向いたらちゃんと使いものになるContent Mapperの使い方も書こうと思います。
